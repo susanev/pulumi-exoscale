@@ -8,10 +8,12 @@ NODE_MODULE_NAME := @pulumi/${PACK}
 TF_NAME          := ${PACK}
 PROVIDER_PATH    := provider
 VERSION_PATH     := ${PROVIDER_PATH}/pkg/version.Version
+JAVA_GEN 		 := pulumi-java-gen
+JAVA_GEN_VERSION := v0.5.4
 
-TFGEN           := pulumi-tfgen-${PACK}
-PROVIDER        := pulumi-resource-${PACK}
-VERSION         := $(shell pulumictl get version)
+TFGEN            := pulumi-tfgen-${PACK}
+PROVIDER         := pulumi-resource-${PACK}
+VERSION          := $(shell pulumictl get version)
 
 TESTPARALLELISM := 4
 
@@ -55,7 +57,7 @@ tfgen:: install_plugins
 provider:: tfgen install_plugins # build the provider binary
 	(cd provider && go build -o $(WORKING_DIR)/bin/${PROVIDER} -ldflags "-X ${PROJECT}/${VERSION_PATH}=${VERSION}" ${PROJECT}/${PROVIDER_PATH}/cmd/${PROVIDER})
 
-build_sdks:: install_plugins provider build_nodejs build_python build_go build_dotnet # build all the sdks
+build_sdks:: install_plugins provider build_nodejs build_python build_go build_dotnet build_java # build all the sdks
 
 build_nodejs:: VERSION := $(shell pulumictl get version --language javascript)
 build_nodejs:: install_plugins tfgen # build the node sdk
@@ -88,6 +90,17 @@ build_dotnet:: install_plugins tfgen # build the dotnet sdk
 
 build_go:: install_plugins tfgen # build the go sdk
 	$(WORKING_DIR)/bin/$(TFGEN) go --overlays provider/overlays/go --out sdk/go/
+
+build_java:: PACKAGE_VERSION := $(shell pulumictl get version --language generic)
+build_java:: bin/pulumi-java-gen install_plugins tfgen
+	$(WORKING_DIR)/bin/$(JAVA_GEN) generate --schema provider/cmd/$(PROVIDER)/schema.json --out sdk/java --build gradle-nexus
+	cd sdk/java/ && \
+		printf "module fake_java_module // Exclude this directory from Go tools\n\ngo 1.17\n" > go.mod && \
+		gradle --console=plain build
+
+bin/pulumi-java-gen::
+	mkdir -p $(WORKING_DIR)/bin
+	pulumictl download-binary -n pulumi-language-java -v $(JAVA_GEN_VERSION) -r pulumi/pulumi-java
 
 lint_provider:: provider # lint the provider code
 	cd provider && golangci-lint run -c ../.golangci.yml

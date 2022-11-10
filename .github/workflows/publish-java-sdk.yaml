@@ -1,0 +1,57 @@
+name: Publish Java SDK
+
+publish_java_sdk:
+  continue-on-error: true
+  name: publish_java_sdk
+  needs: publish
+  runs-on: ubuntu-latest
+  steps:
+    - name: Checkout Repo
+      uses: actions/checkout@v3
+    - name: Checkout Scripts Repo
+      uses: actions/checkout@v3
+      with:
+        path: ci-scripts
+        repository: pulumi/scripts
+    - name: Unshallow clone for tags
+      run: git fetch --prune --unshallow --tags
+    - name: Install Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: ${{matrix.goversion}}
+    - name: Install pulumictl
+      uses: jaxxstorm/action-install-gh-release@v1.5.0
+      with:
+        repo: pulumi/pulumictl
+    - name: Install Pulumi CLI
+      uses: pulumi/action-install-pulumi-cli@v2
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        cache: gradle
+        distribution: temurin
+        java-version: ${{matrix.javaversion}}
+    - name: Download java SDK
+      uses: actions/download-artifact@v2
+      with:
+        name: java-sdk.tar.gz
+        path: ${{ github.workspace}}/sdk/
+    - name: Uncompress java SDK
+      run: tar -zxf ${{github.workspace}}/sdk/java.tar.gz -C
+        ${{github.workspace}}/sdk/java
+    - name: Set PACKAGE_VERSION to Env
+      run: echo "PACKAGE_VERSION=$(pulumictl get version --language generic)" >>
+        $GITHUB_ENV
+    - name: Publish Java SDK
+      uses: gradle/gradle-build-action@9b814496b50909128c6a52622b416c5ffa04db49
+      with:
+        arguments: publishToSonatype closeAndReleaseSonatypeStagingRepository
+        build-root-directory: ./sdk/java
+        gradle-version: 7.4.1
+  strategy:
+    fail-fast: true
+    matrix:
+      goversion:
+        - 1.19.x
+      javaversion:
+        - "11"
